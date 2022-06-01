@@ -64,7 +64,7 @@ options.calc_directional     = N(12);    % 0: calculate full BRDF (many angles)
 options.calc_vert_profiles   = N(13);
 options.soil_heat_method     = N(14);  % 0 - GAM=Soil_Inertia0(lambdas), 1 - GAM=Soil_Inertia1(SMC), 2 - G=0.35*Rn (always in no TS)
 options.calc_rss_rbs          = N(15);  % 0 - fixed, 1 calc
-options.MoninObukhov        = N(16);
+options.MoninObukhov        = N(16);    % 0 - W&V (neutral), 1 - W&V (Paulson 1970), 2 - CLM5
 options.save_spectral        = N(17);
 options.stomatal_model       = N(18);   % 0 - BWB, 1 - Leuning (D0 = 15 hPa), 2 - Medlyn
 options.calc_rhoa            = N(19);

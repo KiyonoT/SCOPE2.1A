@@ -95,6 +95,7 @@ maxit       = 100;              % maximum number of iterations
 maxEBer     = 1;                % maximum energy balance error (any leaf) [Wm-2]
 Wc          = 1;                % update step (1 is nominal, [0,1] possible)
 CONT        = 1;                % boolean indicating whether iteration continues
+nMOzsgn     = 0;                % number of times stability changes sign
 
 % constants
 MH2O        = constants.MH2O;
@@ -102,6 +103,7 @@ Mair        = constants.Mair;
 rhoa        = constants.rhoa;
 cp          = constants.cp;
 sigmaSB     = constants.sigmaSB;
+g           = constants.g;
 R           = constants.R;
 
 % input preparation
@@ -111,6 +113,8 @@ Ps          = gap.Ps;
 kV          = canopy.kV;
 xl          = canopy.xl;
 LAI         = canopy.LAI;
+z0m         = canopy.zo;
+d           = canopy.d;
 rss         = soil.rss;
 
 % functions for saturated vapour pressure 
@@ -139,6 +143,7 @@ ech         = ea*ones(nl,1);          % Leaf boundary vapour pressure (shaded/su
 Cch         = Ca*ones(nl,1);
 ecu         = ea+0*Rnuc;
 Ccu         = Ca+0*Rnuc;          % Leaf boundary CO2 (shaded/sunlit leaves)
+z           = meteo.z;
 if options.calc_rhoa
     rhoa = 100*(p-0.378*ea)/(R/Mair*1000)/(Ta+273.15);
 end
@@ -151,10 +156,13 @@ Fs          = [1-Ps(end),Ps(end)];      % Matrix containing values for 1-Ps and 
 fV          = exp(kV*xl(1:end-1));      % Vertical profile of Vcmax
 
 % initial values for the loop
+meteo.Va = meteo.u;
 Ts          = (Ta+3)*ones(2,1);         % soil temperature (+3 for a head start of the iteration) 
 Tch         = (Ta+.1)*ones(nl,1);       % leaf temperature (shaded leaves)
 Tcu         = (Ta+.3)*ones(size(Rnuc)); % leaf tempeFrature (sunlit leaves)
 meteo.L     = -1E6;                     % Monin-Obukhov length
+    soil.Tave   = Ta+3;
+    canopy.Tave = Ta+.2;
 [meteo_h,meteo_u]  = deal(meteo);
 
 % this for is the exponential decline of Vcmax25. If 'lite' the dimensions
@@ -199,10 +207,12 @@ while CONT                          % while energy balance does not close
     bch     = b(leafbio,meteo_h,options,constants,fV);
     bcu     = b(leafbio,meteo_u,options,constants,fVu);
      
+        alpha_soil = 1;
     % Aerodynamic roughness
     % calculate friction velocity [m s-1] and aerodynamic resistances [s m-1]  
-    [resist_out]  = resistances(constants,soil,canopy,meteo);
+    [resist_out]  = resistances(constants,soil,canopy,meteo,options);
     meteo.ustar = resist_out.ustar;
+    if options.MoninObukhov < 2 % SCOPE's built-in function; different from Tol 2009 [Fig B1] ?
     raa     = resist_out.raa;
     rawc    = resist_out.rawc;
     raws    = resist_out.raws;  
@@ -214,6 +224,33 @@ while CONT                          % while energy balance does not close
     [lEch,Hch,ech,Cch,lambdah,sh]     = heatfluxes(rac,bch.rcw,Tch,ea,Ta,e_to_q,Ca,bch.Ci,constants, es_fun, s_fun);
     [lEcu,Hcu,ecu,Ccu,lambdau,su]     = heatfluxes(rac,bcu.rcw,Tcu,ea,Ta,e_to_q,Ca,bcu.Ci,constants, es_fun, s_fun);
     [lEs,Hs,~,~,lambdas,ss]           = heatfluxes(ras,rss ,Ts ,ea,Ta,e_to_q,Ca,Ca,constants, es_fun, s_fun);
+    else % CLM5 (commonly used dual-source model)
+        raa  = resist_out.raa;
+        rawc = resist_out.rawc; % bulk leaf boundary layer resistance
+        rbc  = rawc * LAI;      % boundary layer resistance for a leaf
+        raws = resist_out.raws;
+
+        % Calc canopy air temperature
+        Ta = (meteo.Ta/raa + soil.Tave/raws + canopy.Tave/rawc) / (1/raa + 1/raws + 1/rawc);
+
+        % Calc vapour pressure in the canopy air
+        es = Fs * ([es_fun(Ts(1)); es_fun(Ts(2))] .* alpha_soil); % vapour pressure in the surface soil
+        ec = aggregator(1, ecu, ech, Fc, canopy, integr);
+        ea = (meteo.ea/raa + es/(raws+rss) + ec/(0.92*rawc)) / (1/raa + 1/(raws+rss) + 1/(0.92*rawc));
+        
+        % Calc CO2 concentration in the canopy air; soil respiration is neglected
+        Cc = aggregator(1, Ccu, Cch, Fc, canopy, integr);
+        Ca = (meteo.Ca/raa + Cc/(1.23*rawc)) / (1/raa + 1./(1.23*rawc));
+
+        % Fluxes
+        [lEch,Hch,ech,Cch,lambdah,sh] = heatfluxes2(rbc, bch.rcw,Tch,ea,Ta,e_to_q,Ca,bch.Ci,rhoa,cp, es_fun, s_fun);
+        [lEcu,Hcu,ecu,Ccu,lambdau,su] = heatfluxes2(rbc, bcu.rcw,Tcu,ea,Ta,e_to_q,Ca,bcu.Ci,rhoa,cp, es_fun, s_fun);
+        [lEs, Hs, ~,  ~,  lambdas,ss] = heatfluxes2(raws,    rss,Ts, ea,Ta,e_to_q,Ca,    Ca,rhoa,cp, es_fun, s_fun, alpha_soil);
+
+        % to be consistent with SCOPE
+        rac = rbc;
+        ras = raws;
+    end
     
     % integration over the layers and sunlit and shaded fractions
     Hstot   = Fs*Hs;
@@ -222,7 +259,25 @@ while CONT                          % while energy balance does not close
     
     Htot    = Hstot + Hctot;
     if options.MoninObukhov
-        meteo.L = Monin_Obukhov(constants,meteo,Htot,options);
+        L = Monin_Obukhov(constants,meteo,Htot,options);
+        if options.MoninObukhov == 2
+            if L > 0, L = max(L, (z-d)/0.5); end
+            meteo.Va    = resist_out.Va;
+            % below averagings are valid only when boundary layer resistances are same for sunlit/shaded parts
+            soil.Tave   = Fs*Ts;
+            canopy.Tave = aggregator(1, Tcu, Tch, Fc, canopy, integr);
+        end
+        if L*meteo.L < 0, nMOzsgn = nMOzsgn + 1; end
+        if options.MoninObukhov == 1 || nMOzsgn < 5 % update Obukhov length
+            meteo.L = L;
+        else % if stability correction fails to converge,
+            if exist('RiB0', 'var') % fix to the initial value
+                meteo.L = (z-d)/RiB2zeta(RiB0, z, d, z0m);
+            else % fix to a neutral condition
+                meteo.L = Inf;
+            end
+        end
+        if options.MoninObukhov == 2 && options.calc_rhoa == 0, meteo.L = Inf; end
     end
     
     % ground heat flux
@@ -320,6 +375,17 @@ return
 
 function flux_tot = aggregator(LAI,sunlit_flux, shaded_flux, Fs, canopy,integr)
 flux_tot = LAI*(meanleaf(canopy,sunlit_flux,integr,Fs) + meanleaf(canopy,shaded_flux,'layers',1-Fs));
+return
+
+function zeta = RiB2zeta(RiB, z, d, z0m)
+    if RiB >= 0 % neutral or stable
+        % CLM5 uses an ad-hoc cap that ensures zeta < 0.5 (Bonan, AFM 2021)
+        zeta = RiB*log((z-d)/z0m) / (1-5*min(RiB,0.19));
+        zeta = min(0.5, max(zeta,0.01));
+    else % unstable
+        zeta = RiB*log((z-d)/z0m);
+        zeta = max(-100, min(zeta,-0.01));
+    end
 return
 
 function stressfactor = pw_lin(SMC, c, w)
