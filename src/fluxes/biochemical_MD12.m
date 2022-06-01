@@ -1,4 +1,4 @@
-function biochem_out = biochemical_MD12(leafbio,meteo,~,constants,fV,Q)
+function biochem_out = biochemical_MD12(leafbio,meteo,options,constants,fV,Q)
 
 %[A,Ci,eta] = biochemical_VCM(Cs,Q,T,eb,O,p,Vcmo,m,Type,Rdparam,stress,Tyear,beta,qLs,NPQs)
 % Date:     21 Sep 2012
@@ -60,7 +60,7 @@ Tyear   = leafbio.Tyear;
 beta    = leafbio.beta;
 qLs     = leafbio.qLs;
 NPQs    = leafbio.kNPQs;
-%stress=leafbio.stressfactor;
+stress  = leafbio.stressfactor;
 Cs      = meteo.Cs;
 if nargin<6
     Q   = meteo.Q;
@@ -69,7 +69,7 @@ T       = meteo.T;
 eb      = meteo.eb;
 Vcmax25    = fV.*leafbio.Vcmax25;
 Rdparam = leafbio.RdPerVcmax25;
-Q(Q==0) = 1E-9;
+model = options.stomatal_model;
 
 %% Global and site-specific constants
 R             =  constants.R;                         % [J/K/mol]     universal gas constant
@@ -82,7 +82,18 @@ end
 %---------------------------------------------------------------------------------------------------------
 %% Unit conversion and computation of environmental variables
 T       = T+273.15*(T<100);                           % [K]           convert temperatures to K if not already
-RH      = min(1,eb./satvap(T-273.15));                       % []            relative humidity (decimal)
+switch model
+    case 0 % BWB
+        RH = min(1, eb./satvap(T-273.15));            % []         relative humidity (decimal)
+    case 1 % Leuning
+        D0 = 15;                                      % [hPa] VPD sensitivity (CABLE)
+        RH = 1./(1+(satvap(T-273.15)-eb)./D0);        % [] this is not relative humidity!
+        % dewing and canopy-water balance are not predicted in SCOPE. here I assume stomatal pore is filled up with water (stomata is closed).
+        RH(satvap(T-273.15)<eb) = 0;
+    case 2 % Medlyn
+        RH = 1./sqrt(0.1*satvap(T-273.15)-0.1*eb);    % [kPa^-0.5] this is not relative humidity!
+        RH(satvap(T-273.15)<eb) = 0;
+end
 Cs      = Cs .* p .*1E-11;                            % [bar]         1E-6 to convert from ppm to fraction, 1E-5 to convert from Pa to bar
 O       = O  .* p .*1E-08;                            % [bar]         1E-3 to convert from mmol/mol to fraction, 1E-5 to convert from Pa to bar
 
@@ -160,12 +171,13 @@ dum2   = R./1000.*TREF;                               % [kJ/mol]
 
 Rd     = Rdopt.*exp(CRD-HARD./dum1);                  % [umol/m2/s]    mitochondrial respiration rates adjusted for temperature (Bernacchi et al. 2001)
 SCO    = SCOOP./exp(CGSTAR-HAGSTAR./dum1);            % []             Rubisco specificity for CO2 adjusted for temperature (Bernacchi et al. 2001)
+Gamma  = 0.5*O./SCO;                                  % [bar]          CO2 compensation point in the absence of mitochondrial respiration
 
 Jmax   = Jmo .* exp(HAJ.*(T-TREF)./(TREF*dum1));
 Jmax   = Jmax.*(1.+exp((TREF*DELTASJ-HDJ)./dum2));
 Jmax   = Jmax./(1.+exp((T.*DELTASJ-HDJ)./dum1));     % [umol e-/m2/s] max electron transport rate at leaf temperature (Kattge and Knorr 2007; Massad et al. 2007)
 
-Vcmax  = Vcmax25 .* exp(HAVCM.*(T-TREF)./(TREF*dum1));
+Vcmax  = Vcmax25 .* exp(HAVCM.*(T-TREF)./(TREF*dum1)) .* stress; % stress factor expresses mesophyll resistance here
 Vcmax  = Vcmax.*(1+exp((TREF*DELTASVC-HDVC)/dum2));
 Vcmax  = Vcmax./(1+exp((T.*DELTASVC-HDVC)./dum1));    % [umol/m2/s]    max carboxylation rate at leaf temperature (Kattge and Knorr 2007; Massad et al. 2007)
 
@@ -221,7 +233,7 @@ switch Type
         minCi = 0.1;
 end
 
-Ci = BallBerry(Cs, RH, [], BallBerrySlope, BallBerry0, minCi);
+Ci = BallBerry(model, Cs, RH, [], BallBerrySlope, BallBerry0, Gamma, minCi); % initial value
 
 switch Type
     case 'C3'                                           % C3 species, based on Farquhar model (Farquhar et al. 1980)
@@ -339,19 +351,19 @@ end
 
 
 %% Ball Berry Model
-function [Ci, gs] = BallBerry(Cs, RH, A, BallBerrySlope, BallBerry0, minCi, Ci_input)
+function [Ci, gs] = BallBerry(model, Cs, RH, A, BallBerrySlope, BallBerry0, Gamma, minCi, Ci_input)
 %  Cs  : CO2 at leaf surface
 %  RH  : relative humidity
 %  A   : Net assimilation in 'same units of CO2 as Cs'/m2/s
 % BallBerrySlope, BallBerry0, 
 % minCi : minimum Ci as a fraction of Cs (in case RH is very low?)
 % Ci_input : will calculate gs if A is specified.
-if nargin > 6 && ~isempty(Ci_input)
+if nargin > 8 && ~isempty(Ci_input)
     % Ci is given: try and compute gs
     Ci = Ci_input;
     gs = [];
     if ~isempty(A) && nargout > 1
-        gs = gsFun(Cs, RH, A, BallBerrySlope, BallBerry0);
+        gs = gsFun(model, Cs, RH, A, BallBerrySlope, BallBerry0, Gamma);
     end
 elseif all(BallBerry0 == 0) || isempty(A)
     % EXPLANATION:   *at equilibrium* CO2_in = CO2_out => A = gs(Cs - Ci) [1]
@@ -368,15 +380,22 @@ else
     % note: the original B-B units are A: umol/m2/s, ci ppm (umol/mol), RH (unitless)
     %   Cs input was ppm but was multiplied by ppm2bar above, so multiply A by ppm2bar to put them on the same scale.
     %  don't let gs go below its minimum value (i.e. when A goes negative)
-    gs = gsFun(Cs, RH, A, BallBerrySlope, BallBerry0);
+    gs = gsFun(model, Cs, RH, A, BallBerrySlope, BallBerry0, Gamma);
     Ci = max(minCi .* Cs,  Cs - 1.6 * A./gs) ;
 end
 
 end % function
 
-function gs = gsFun(Cs, RH, A, BallBerrySlope, BallBerry0)
+function gs = gsFun(model, Cs, RH, A, BallBerrySlope, BallBerry0, Gamma)
 % add in a bit just to avoid div zero. 1 ppm = 1e-6 (note since A < 0 if Cs ==0, it gives a small gs rather than maximal gs
+switch model
+    case 0 % BWB
 gs = max(BallBerry0,  BallBerrySlope.* A .* RH ./ (Cs+1e-9)  + BallBerry0);
+    case 1 % Leuning
+        gs = max(BallBerry0,  BallBerrySlope.* A .* RH ./ (Cs-Gamma) + BallBerry0);
+    case 2 % Medlyn
+        gs = max(BallBerry0, (1+BallBerrySlope.*RH).* A ./ (Cs+1e-9) + BallBerry0);
+end
 % clean it up:
 %gs( Cs == 0 ) = would need to be max gs here;  % eliminate infinities
 gs( isnan(Cs) ) = NaN;  % max(NaN, X) = X  (MATLAB 2013b) so fix it here

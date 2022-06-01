@@ -80,5 +80,7 @@ V(68).Name                  = 'lambdas';
 %V(69).Name                  = 'Cv'; 
 %V(70).Name                  = 'crowndiameter'; 
 
+V(80).Name                  = 'theta_c';
+V(81).Name                  = 'theta_w';
 
 end

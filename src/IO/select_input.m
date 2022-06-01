@@ -44,6 +44,8 @@ leafbio.beta            = V(56).Val(vi(56));
 leafbio.kNPQs           = V(57).Val(vi(57));
 leafbio.qLs             = V(58).Val(vi(58));
 leafbio.stressfactor    = V(59).Val(vi(59));
+leafbio.theta_c         = V(80).Val(vi(80));
+leafbio.theta_w         = V(81).Val(vi(81));
 
 canopy.LAI              = max(1E-9,V(22).Val(vi(22)));
 canopy.hc               = V(23).Val(vi(23));

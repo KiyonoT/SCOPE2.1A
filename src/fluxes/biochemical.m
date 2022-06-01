@@ -123,6 +123,7 @@ Vcmax25         = fV.*leafbio.Vcmax25;
 BallBerrySlope  = leafbio.BallBerrySlope;
 RdPerVcmax25    = leafbio.RdPerVcmax25;
 BallBerry0      = leafbio.BallBerry0;
+model           = options.stomatal_model;
 Tref            = 25+273.15;        % [K]           absolute temperature at 25 oC
 
 %Jmax25      = 1.97*Vcmax25;
@@ -267,7 +268,18 @@ else
 end
 
 %% calculation of Ci (internal CO2 concentration)
-RH = min(1, eb./satvap(T-273.15) ); % jak: don't allow "supersaturated" air! (esp. on T curves)
+switch model
+    case 0 % BWB
+        RH = min(1, eb./satvap(T-273.15) ); % jak: don't allow "supersaturated" air! (esp. on T curves)
+    case 1 % Leuning
+        D0 = 15;                                      % [hPa] VPD sensitivity (CABLE)
+        RH = 1./(1+(satvap(T-273.15)-eb)./D0);        % [] this is not relative humidity!
+        % dewing and canopy-water balance are not predicted in SCOPE. here I assume stomatal pore is filled up with water (stomata is closed).
+        RH(satvap(T-273.15)<eb) = 0;
+    case 2 % Medlyn
+        RH = 1./sqrt(0.1*satvap(T-273.15)-0.1*eb);    % [kPa^-0.5] this is not relative humidity!
+        RH(satvap(T-273.15)<eb) = 0;
+end
 computeA()  % clears persistent fcount
 computeA_fun = @(x) computeA(x, Type, g_m, Vs_C3, MM_consts, Rd, Vcmax, Gamma_star, Je, effcon, atheta, Ke);
 
@@ -282,7 +294,7 @@ else
     tol = 1e-7;  % 0.1 ppm more-or-less
     % Setting the "corner" argument to Gamma may be useful for low Ci cases, but not very useful for atmospheric CO2, so it's ignored.
     %                     (fn,                           x0, corner, tolerance)
-    [Ci] = fixedp_brent_ari(@(x) Ci_next(x, Cs, RH, minCi, BallBerrySlope, BallBerry0, computeA_fun, ppm2bar), Cs, [], tol); % [] in place of Gamma: it didn't make much difference
+    [Ci] = fixedp_brent_ari(@(x) Ci_next(x, Cs, RH, minCi, model, BallBerrySlope, BallBerry0, Gamma_star, computeA_fun, ppm2bar), Cs, [], tol); % [] in place of Gamma: it didn't make much difference
     %NOTE: A is computed in Ci_next on the final returned Ci. fixedp_brent_ari() guarantees that it was done on the returned values.
     %     A =  computeA_fun(Ci);
 end
@@ -379,19 +391,19 @@ end %of min_root of quadratic formula
 
 
 %% Ball Berry Model
-function [Ci, gs] = BallBerry(Cs, RH, A, BallBerrySlope, BallBerry0, minCi, Ci_input)
+function [Ci, gs] = BallBerry(model, Cs, RH, A, BallBerrySlope, BallBerry0, Gamma_star, minCi, Ci_input)
 %  Cs  : CO2 at leaf surface
 %  RH  : relative humidity
 %  A   : Net assimilation in 'same units of CO2 as Cs'/m2/s
 % BallBerrySlope, BallBerry0,
 % minCi : minimum Ci as a fraction of Cs (in case RH is very low?)
 % Ci_input : will calculate gs if A is specified.
-if nargin > 6 && ~isempty(Ci_input)
+if nargin > 8 && ~isempty(Ci_input)
     % Ci is given: try and compute gs
     Ci = Ci_input;
     gs = [];
     if ~isempty(A) && nargout > 1
-        gs = gsFun(Cs, RH, A, BallBerrySlope, BallBerry0);
+        gs = gsFun(model, Cs, RH, A, BallBerrySlope, BallBerry0, Gamma_star);
     end
 elseif all(BallBerry0 == 0) || isempty(A)
     % EXPLANATION:   *at equilibrium* CO2_in = CO2_out => A = gs(Cs - Ci) [1]
@@ -408,15 +420,22 @@ else
     % note: the original B-B units are A: umol/m2/s, ci ppm (umol/mol), RH (unitless)
     %   Cs input was ppm but was multiplied by ppm2bar above, so multiply A by ppm2bar to put them on the same scale.
     %  don't let gs go below its minimum value (i.e. when A goes negative)
-    gs = gsFun(Cs, RH, A, BallBerrySlope, BallBerry0);
+    gs = gsFun(model, Cs, RH, A, BallBerrySlope, BallBerry0, Gamma_star);
     Ci = max(minCi .* Cs,  Cs - 1.6 * A./gs) ;
 end
 
 end % function
 
-function gs = gsFun(Cs, RH, A, BallBerrySlope, BallBerry0)
+function gs = gsFun(model, Cs, RH, A, BallBerrySlope, BallBerry0, Gamma_star)
 % add in a bit just to avoid div zero. 1 ppm = 1e-6 (note since A < 0 if Cs ==0, it gives a small gs rather than maximal gs
-gs = max(BallBerry0,  BallBerrySlope.* A .* RH ./ (Cs+1e-9)  + BallBerry0);
+switch model
+    case 0 % BWB
+        gs = max(BallBerry0,  BallBerrySlope.* A .* RH ./ (Cs+1e-9)  + BallBerry0);
+    case 1 % Leuning
+        gs = max(BallBerry0,  BallBerrySlope.* A .* RH ./ (Cs-Gamma_star) + BallBerry0);
+    case 2 % Medlyn
+        gs = max(BallBerry0, (1+BallBerrySlope.*RH).* A ./ (Cs+1e-9) + BallBerry0);
+end
 % clean it up:
 %gs( Cs == 0 ) = would need to be max gs here;  % eliminate infinities
 gs( isnan(Cs) ) = NaN;  % max(NaN, X) = X  (MATLAB 2013b) so fix it here
@@ -449,11 +468,11 @@ end
 %   (note that it assigns A in the function's context.)
 %   As with the next section, this code can be read as if the function body executed at this point.
 %    (if iteration was used). In other words, A is assigned at this point in the file (when iterating).
-function [err, Ci_out] = Ci_next(Ci_in, Cs, RH, minCi, BallBerrySlope, BallBerry0, A_fun, ppm2bar)
+function [err, Ci_out] = Ci_next(Ci_in, Cs, RH, minCi, model, BallBerrySlope, BallBerry0, Gamma_star, A_fun, ppm2bar)
 % compute the difference between "guessed" Ci (Ci_in) and Ci computed using BB after computing A
 A = A_fun(Ci_in);
 A_bar = A .* ppm2bar;
-Ci_out = BallBerry(Cs, RH, A_bar, BallBerrySlope, BallBerry0, minCi); %[Ci_out, gs]
+Ci_out = BallBerry(model, Cs, RH, A_bar, BallBerrySlope, BallBerry0, Gamma_star, minCi); %[Ci_out, gs]
 
 err = Ci_out - Ci_in; % f(x) - x
 end

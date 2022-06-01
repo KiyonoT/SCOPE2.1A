@@ -66,6 +66,7 @@ options.soil_heat_method     = N(14);  % 0 - GAM=Soil_Inertia0(lambdas), 1 - GAM
 options.calc_rss_rbs          = N(15);  % 0 - fixed, 1 calc
 options.MoninObukhov        = N(16);
 options.save_spectral        = N(17);
+options.stomatal_model       = N(18);   % 0 - BWB, 1 - Leuning (D0 = 15 hPa), 2 - Medlyn
 options.calc_rhoa            = N(19);
 
 if options.simulation>2 || options.simulation<0, fprintf('\n simulation option should be between 0 and 2 \r'); return, end

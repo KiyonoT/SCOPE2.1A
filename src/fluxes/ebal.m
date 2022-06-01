@@ -190,6 +190,7 @@ while CONT                          % while energy balance does not close
     meteo_u.eb      = ecu;
     meteo_u.Cs      = Ccu;
     meteo_u.Q       = rad.Pnu_Cab;
+    leafbio.stressfactor = pw_lin(soil.SMC, leafbio.theta_c, leafbio.theta_w); % hydraulic limit for Vcmax
     if options.Fluorescence_model == 1
         b       = @biochemical_MD12;
     else
@@ -319,4 +320,12 @@ return
 
 function flux_tot = aggregator(LAI,sunlit_flux, shaded_flux, Fs, canopy,integr)
 flux_tot = LAI*(meanleaf(canopy,sunlit_flux,integr,Fs) + meanleaf(canopy,shaded_flux,'layers',1-Fs));
+return
+
+function stressfactor = pw_lin(SMC, c, w)
+    if c > 1
+        c = c/100;
+        w = w/100;
+    end
+    stressfactor = max(0, min((SMC-w)/(c-w), 1));
 return
