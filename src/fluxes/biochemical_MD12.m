@@ -56,7 +56,7 @@ BallBerrySlope       = leafbio.BallBerrySlope;
 BallBerry0          = leafbio.BallBerry0;
 O       = meteo.Oa;
 Type    = leafbio.Type;
-Tyear   = leafbio.Tyear;
+Tyear   = max(11, min(leafbio.Tyear, 35));
 beta    = leafbio.beta;
 qLs     = leafbio.qLs;
 NPQs    = leafbio.kNPQs;
@@ -69,6 +69,7 @@ T       = meteo.T;
 eb      = meteo.eb;
 Vcmax25    = fV.*leafbio.Vcmax25;
 Rdparam = leafbio.RdPerVcmax25;
+Q = max(Q, 1E-9);
 model = options.stomatal_model;
 
 %% Global and site-specific constants
@@ -96,6 +97,7 @@ switch model
 end
 Cs      = Cs .* p .*1E-11;                            % [bar]         1E-6 to convert from ppm to fraction, 1E-5 to convert from Pa to bar
 O       = O  .* p .*1E-08;                            % [bar]         1E-3 to convert from mmol/mol to fraction, 1E-5 to convert from Pa to bar
+ppm2bar =  1e-6 .* (p .*1E-5);
 
 %---------------------------------------------------------------------------------------------------------
 %% Define photosynthetic parameters (at reference temperature)
@@ -107,10 +109,6 @@ switch Type
     otherwise                                           % C4 species
         Jmo   =  Vcmax25 * 40/6;                           % [umole-/m2/s] maximum electron transport rate (ratio as in von Caemmerer 2000)
         Vpmo  =  Vcmax25 * 2.33;                             % [umol/m2/s]   maximum PEP carboxylase activity (Yin et al. 2011)
-        Vpr   =  80;                                     % [umol/m2/s]   PEP regeneration rate, constant (von Caemmerer 2000)
-        gbs   =  (0.0207*Vcmax25+0.4806)*1000.;           % [umol/m2/s]   bundle sheath conductance to CO2 (Yin et al. 2011)
-        x     =  0.4;                                     % []            partitioning of electron transport to mesophyll (von Caemmerer 2013)
-        alpha =  0;                                      % []            bundle sheath PSII activity (=0 in maize/sorghum; >=0.5 in other cases; von Caemmerer 2000)
 end
 
 %---------------------------------------------------------------------------------------------------------
@@ -118,6 +116,8 @@ end
 TREF         = 25+273.15;                             % [K]            reference temperature for photosynthetic processes
 
 HARD         = 46.39;                                 % [kJ/mol]       activation energy of Rd
+HDRD         = leafbio.TDP.delHdR/1000;               % [kJ/mol]       deactivation energy of Rd (CLM4&5)
+DELTASRD     = leafbio.TDP.delSR/1000;                % [kJ/mol/K]     entropy term for Rd (CLM4&5)
 CRD          = 1000.*HARD/(R*TREF);                   % []             scaling factor in RD response to temperature
 
 HAGSTAR      = 37.83;                                 % [kJ/mol]       activation energy of Gamma_star
@@ -126,12 +126,18 @@ CGSTAR       = 1000.*HAGSTAR/(R*TREF);                % []             scaling f
 switch Type
     case 'C3'                                           % C3 species
         HAJ     = 49.88;                                 % [kJ/mol]       activation energy of Jm (Kattge & Knorr 2007)
+        % HAJ     = leafbio.TDP.delHaJ/1000; % CLM4 & TB12
         HDJ     = 200;                                   % [kJ/mol]       deactivation energy of Jm (Kattge & Knorr 2007)
+        % HDJ     = leafbio.TDP.delHdJ/1000; % CLM4 & TB12
         DELTASJ = (-0.75*Tyear+660)/1000;                % [kJ/mol/K]     entropy term for J  (Kattge and Knorr 2007)
+        % DELTASJ = leafbio.TDP.delSJ/1000;  % CLM4 & TB12
         
         HAVCM   = 71.51;                                 % [kJ/mol]       activation energy of Vcm (Kattge and Knorr 2007)
+        % HAVCM   = leafbio.TDP.delHaV/1000; % CLM4 & TB12
         HDVC    = 200;                                   % [kJ/mol]       deactivation energy of Vcm (Kattge & Knorr 2007)
+        % HDVC    = leafbio.TDP.delHdV/1000; % CLM4 & TB12
         DELTASVC= (-1.07*Tyear+668)/1000;                % [kJ/mol/K]     entropy term for Vcmax (Kattge and Knorr 2007)
+        % DELTASVC= leafbio.TDP.delSV/1000;  % CLM4 & TB12
         
         KCOP    = 404.9;                                 % [umol/mol]     Michaelis-Menten constant for CO2 at ref temp (Bernacchi et al 2001)
         HAKC    = 79.43;                                 % [kJ/mol]       activation energy of Kc (Bernacchi et al 2001)
@@ -170,6 +176,10 @@ dum1   = R./1000.*T;                                  % [kJ/mol]
 dum2   = R./1000.*TREF;                               % [kJ/mol]
 
 Rd     = Rdopt.*exp(CRD-HARD./dum1);                  % [umol/m2/s]    mitochondrial respiration rates adjusted for temperature (Bernacchi et al. 2001)
+if strcmp('C3',Type) % CLM5
+    Rd     = Rd.*(1.+exp((TREF*DELTASRD-HDRD)./dum2));
+    Rd     = Rd./(1.+exp((T.*DELTASRD-HDRD)./dum1));
+end
 SCO    = SCOOP./exp(CGSTAR-HAGSTAR./dum1);            % []             Rubisco specificity for CO2 adjusted for temperature (Bernacchi et al. 2001)
 Gamma  = 0.5*O./SCO;                                  % [bar]          CO2 compensation point in the absence of mitochondrial respiration
 
@@ -188,7 +198,7 @@ switch Type
         
         CKO    = 1000.*HAKO/(R*TREF);                     % []             scaling factor in KO response to temperature
         Ko     = KOOP.*exp(CKO-HAKO./dum1).*1e-8.*p;      % [bar]          Michaelis constant of oxygenation adjusted for temperature (Bernacchi et al. 2001)
-        
+        Vpmax  = 0; % dummy variable, to be consistent with C4
     otherwise                                           % C4 species
         Vpmax  = Vpmo .* exp(HAVPM.*(T-TREF)./(TREF*dum1));
         Vpmax  = Vpmax.*(1+exp((TREF*DELTASVP-HDVP)/dum2));
@@ -199,14 +209,16 @@ switch Type
         Ko     = KOOP.*Q10KO .^ ((T-TREF)/10.)*1e-8*p;     % [bar]          Michaelis constant of oxygenation  temperature corrected (Chen et al 1994; Massad et al 2007)
         
         Kp     = KPOP.*Q10KP .^ ((T-TREF)/10.)*1e-11*p;    % [bar]          Michaelis constant of PEP carboxyl temperature corrected (Chen et al 1994; Massad et al 2007)
-        
+        MM_consts.Kp = Kp;
 end
+MM_consts.Kc = Kc; % Michaelis-Menten constants
+MM_consts.Ko = Ko;
 
 %---------------------------------------------------------------------------------------------------------
 %% Define electron transport and fluorescence parameters
-kf        = 3.E7;                                    % [s-1]         rate constant for fluorescence
-kD        = 1.E8;                                   % [s-1]         rate constant for thermal deactivation at Fm
-kd        = 1.95E8;                                    % [s-1]         rate constant of energy dissipation in closed RCs (for theta=0.7 under un-stressed conditions)  
+kf        = 6.7E7;                                    % [s-1]         rate constant for fluorescence (Rabinowich & Govindjee 1969, p136)
+kD        = 6.03E8;                                   % [s-1]         rate constant for thermal deactivation at Fm (Porcar-Castell et al. 2006)
+kd        = 1.005E9;                                  % [s-1]         rate constant of energy dissipation in closed RCs (for theta=0.7 under un-stressed conditions)  
 po0max    = 0.88;                                     % [mol e-/E]    maximum PSII quantum yield, dark-acclimated in the absence of stress (Pfundel 1998)
 kPSII     = (kD+kf) * po0max/(1.-po0max);             % [s-1]         rate constant for photochemisty (Genty et al. 1989)
 fo0       = kf./(kf+kPSII+kD);                        % [E/E]         reference dark-adapted PSII fluorescence yield under un-stressed conditions
@@ -225,80 +237,35 @@ Q2     = beta * Q * po0;
 J      = (Q2+Jms-sqrt((Q2+Jms).^2-4*THETA.*Q2.*Jms))./(2*THETA); % [umol e-/m2/s]    electron transport rate under light-limiting conditions
 
 %---------------------------------------------------------------------------------------------------------
-%% Calculation of net photosynthesis
+%% Calculation of Ci & net photosynthesis
 switch Type
     case 'C3'
         minCi = 0.3;
     otherwise
         minCi = 0.1;
 end
+computeA()  % clears persistent fcount
+computeA_fun = @(x) computeA(x, Type, MM_consts, Rd, Vcmax, Gamma, O, J, Vpmax);
 
 Ci = BallBerry(model, Cs, RH, [], BallBerrySlope, BallBerry0, Gamma, minCi); % initial value
 
-switch Type
-    case 'C3'                                           % C3 species, based on Farquhar model (Farquhar et al. 1980)
-        GSTAR = 0.5*O./SCO;                             % [bar]             CO2 compensation point in the absence of mitochondrial respiration
-        
-        Cc  = Ci;                                        % [bar]             CO2 concentration at carboxylation sites (neglecting mesophyll resistance)
-        
-        Wc  = Vcmax .* Cc ./ (Cc + Kc .* (1+O./Ko));     % [umol/m2/s]       RuBP-limited carboxylation
-        Wj  = J.*Cc ./ (4.5*Cc + 10.5*GSTAR);            % [umol/m2/s]       electr transp-limited carboxyl
-        
-        W   = min(Wc,Wj);                                % [umol/m2/s]       carboxylation rate
-        Ag  = (1 - GSTAR./Cc) .*W;                       % [umol/m2/s]       gross photosynthesis rate
-        A   = Ag - Rd;                                   % [umol/m2/s]       net photosynthesis rate
-        Ja  = J.*W ./Wj;                                 % [umole-/m2/s]     actual linear electron transport rate
-        
-    otherwise                                           % C4 species, based on von Caemmerer model (von Caemmerer 2000)
-        %Ci    =  max(9.9e-6*(p*1e-5),Cs.*(1-1.6./(m.*RH*stress)));
-        % [bar]             intercellular CO2 concentration from Ball-Berry model (Ball et al. 1987)
-        minCi = 0.1;
-        Ci = BallBerry(Cs, RH, [], BallBerrySlope, 0, minCi);
-        
-        Cm    =  Ci;                                     % [bar]             mesophyll CO2 concentration (neglecting mesophyll resistance)
-        Rs    =  0.5 .* Rd;                               % [umol/m2/s]       bundle sheath mitochondrial respiration (von Caemmerer 2000)
-        Rm    =  Rs;                                     % [umol/m2/s]       mesophyll mitochondrial respiration
-        gam   =  0.5./SCO;                               % []                half the reciprocal of Rubisco specificity for CO2
-        
-        Vpc   = Vpmax .* Cm./(Cm+Kp);                     % [umol/m2/s]       PEP carboxylation rate under limiting CO2 (saturating PEP)
-        Vp    = min(Vpc,Vpr);                            % [umol/m2/s]       PEP carboxylation rate
-        
-        % Complete model proposed by von Caemmerer (2000)
-        dum1  =  alpha/0.047;                           % dummy variables, to reduce computation time
-        dum2  =  Kc./Ko;
-        dum3  =  Vp-Rm+gbs.*Cm;
-        dum4  =  Vcmax-Rd;
-        dum5  =  gbs.*Kc.*(1+O./Ko);
-        dum6  =  gam.*Vcmax;
-        dum7  =  x*J./2. - Rm + gbs.*Cm;
-        dum8  =  (1.-x).*J./3.;
-        dum9  =  dum8 - Rd;
-        dum10 =  dum8 + Rd * 7/3;
-        
-        a     =  1. - dum1 .* dum2;
-        b     =  -(dum3+dum4+dum5+dum1.*(dum6+Rd.*dum2));
-        c     =  dum4.*dum3-dum6.*gbs*O+Rd.*dum5;
-        Ac    =  (-b - sqrt(b.^2-4.*a.*c))./(2.*a);           % [umol/m2/s]       CO2-limited net photosynthesis
-        
-        a     =  1.- 7./3.*gam.*dum1;
-        b     =  -(dum7+dum9 + gbs.*gam.*O.*7./3. + dum1.*gam.*dum10);
-        c     =  dum7.*dum9 - gbs.*gam.*O.*dum10;
-        Aj    =  (-b - sqrt(b.^2-4.*a.*c))./(2.*a);           % [umol/m2/s]       light-limited net photosynthesis (assuming that an obligatory Q cycle operates)
-        
-        A     =  min(Ac,Aj);                             % [umol/m2/s]       net photosynthesis
-        
-        Ja    =  J;                                      % [umole-/m2/s]     actual electron transport rate, CO2-limited
-               
-        if any(A==Ac) %IPL 03/09/2013
-            
-            ind=A==Ac;
-            a(ind)   =  x.*(1-x)./6./A(ind);
-            b(ind)   =  (1-x)/3.*(gbs(ind)./A(ind).*(Cm(ind)-Rm(ind)./gbs(ind)-gam(ind).*O)-1-alpha.*gam(ind)./0.047)-x./2.*(1.+Rd(ind)./A(ind));
-            c(ind)   =  (1+Rd(ind)./A(ind)).*(Rm(ind)-gbs(ind).*Cm(ind)-7.*gbs(ind).*gam(ind).*O./3)+(Rd(ind)+A(ind)).*(1-7.*alpha.*gam(ind)./3./0.047);
-            Ja(ind)  =  (-b(ind) + sqrt(b(ind).^2-4.*a(ind).*c(ind)))./(2.*a(ind));            % [umole-/m2/s]     actual electron transport rate, CO2-limited
-            
-        end
+if all(BallBerry0 == 0)
+    % b = 0: no need to iterate:
+    %     A =  computeA_fun(Ci);   
+else
+    % compute Ci using iteration (JAK)
+    % it would be nice to use a built-in root-seeking function but fzero requires scalar inputs and outputs,
+    % Here I use a fully vectorized method based on Brent's method (like fzero) with some optimizations.
+    tol = 1e-7;  % 0.1 ppm more-or-less
+    % Setting the "corner" argument to Gamma may be useful for low Ci cases, but not very useful for atmospheric CO2, so it's ignored.
+    %                     (fn,                           x0, corner, tolerance)
+    [Ci] = fixedp_brent_ari(@(x) Ci_next(x, Cs, RH, minCi, model, BallBerrySlope, BallBerry0, Gamma, computeA_fun, ppm2bar), Ci, [], tol); % [] in place of Gamma: it didn't make much difference
+    %NOTE: A is computed in Ci_next on the final returned Ci. fixedp_brent_ari() guarantees that it was done on the returned values.
+    %     A =  computeA_fun(Ci);
 end
+
+[A, biochem_out]    = computeA_fun(Ci);
+Ja = biochem_out.Ja;
 
 %---------------------------------------------------------------------------------------------------------
 %% Calculation of PSII quantum yield and fluorescence
@@ -308,7 +275,6 @@ eta    = fs./fo0;                                   % []            scaled PSII 
 
 
 %rcw         = 0.625*(Cs-Ci)./A *rhoa/Mair*1E3    * 1e6 ./ p .* 1E5;
-ppm2bar =  1e-6 .* (p .*1E-5);
 gs = 1.6 * A* ppm2bar./ (Cs-Ci);
 rcw      =  (rhoa./(Mair*1E-3))./gs;
 rcw(A<=0 & rcw~=0)   = 0.625*1E6;
@@ -390,7 +356,7 @@ function gs = gsFun(model, Cs, RH, A, BallBerrySlope, BallBerry0, Gamma)
 % add in a bit just to avoid div zero. 1 ppm = 1e-6 (note since A < 0 if Cs ==0, it gives a small gs rather than maximal gs
 switch model
     case 0 % BWB
-gs = max(BallBerry0,  BallBerrySlope.* A .* RH ./ (Cs+1e-9)  + BallBerry0);
+        gs = max(BallBerry0,  BallBerrySlope.* A .* RH ./ (Cs+1e-9)  + BallBerry0);
     case 1 % Leuning
         gs = max(BallBerry0,  BallBerrySlope.* A .* RH ./ (Cs-Gamma) + BallBerry0);
     case 2 % Medlyn
@@ -401,7 +367,104 @@ end
 gs( isnan(Cs) ) = NaN;  % max(NaN, X) = X  (MATLAB 2013b) so fix it here
 end
 
+%% Test-function for iteration
+%   (note that it assigns A in the function's context.)
+%   As with the next section, this code can be read as if the function body executed at this point.
+%    (if iteration was used). In other words, A is assigned at this point in the file (when iterating).
+function [err, Ci_out] = Ci_next(Ci_in, Cs, RH, minCi, model, BallBerrySlope, BallBerry0, Gamma, A_fun, ppm2bar)
+% compute the difference between "guessed" Ci (Ci_in) and Ci computed using BB after computing A
+A = A_fun(Ci_in);
+A_bar = A .* ppm2bar;
+Ci_out = BallBerry(model, Cs, RH, A_bar, BallBerrySlope, BallBerry0, Gamma, minCi); %[Ci_out, gs]
 
+err = Ci_out - Ci_in; % f(x) - x
+end
+
+%% Compute Assimilation.
+%  Note: even though computeA() is written as a separate function,
+%    the code is, in fact, executed exactly this point in the file (i.e. between the previous if clause and the next section
+function [A, biochem_out] = computeA(Ci, Type, MM_consts, Rd, Vcmax, Gamma, O, J, Vpmax)
+persistent fcount
+if nargin == 0
+    fcount = 0;
+    return
+end
+Kc = MM_consts.Kc;
+Ko = MM_consts.Ko;
+switch Type
+    case 'C3'                                           % C3 species, based on Farquhar model (Farquhar et al. 1980)
+        Cc  = Ci;                                        % [bar]             CO2 concentration at carboxylation sites (neglecting mesophyll resistance)        
+        Wc  = Vcmax .* Cc ./ (Cc + Kc .* (1+O./Ko));     % [umol/m2/s]       RuBP-limited carboxylation
+        Wj  = J.*Cc ./ (4.5*Cc + 10.5*Gamma);            % [umol/m2/s]       electr transp-limited carboxyl
+        
+        W   = min(Wc,Wj);                                % [umol/m2/s]       carboxylation rate
+        Ag  = (1 - Gamma./Cc) .*W;                       % [umol/m2/s]       gross photosynthesis rate
+        A   = Ag - Rd;                                   % [umol/m2/s]       net photosynthesis rate
+        Ja  = J.*W ./Wj;                                 % [umole-/m2/s]     actual linear electron transport rate
+
+    otherwise                                           % C4 species, based on von Caemmerer model (von Caemmerer 2000)
+        Kp = MM_consts.Kp;
+        Vpr   =  80;                                     % [umol/m2/s]   PEP regeneration rate, constant (von Caemmerer 2000)
+        gbs   =  (0.0207*Vcmax25+0.4806)*1000.;           % [umol/m2/s]   bundle sheath conductance to CO2 (Yin et al. 2011)
+        x     =  0.4;                                     % []            partitioning of electron transport to mesophyll (von Caemmerer 2013)
+        alpha =  0;                                      % []            bundle sheath PSII activity (=0 in maize/sorghum; >=0.5 in other cases; von Caemmerer 2000)
+
+        %Ci    =  max(9.9e-6*(p*1e-5),Cs.*(1-1.6./(m.*RH*stress)));
+        % [bar]             intercellular CO2 concentration from Ball-Berry model (Ball et al. 1987)
+        Cm    =  Ci;                                     % [bar]             mesophyll CO2 concentration (neglecting mesophyll resistance)
+        Rs    =  0.5 .* Rd;                               % [umol/m2/s]       bundle sheath mitochondrial respiration (von Caemmerer 2000)
+        Rm    =  Rs;                                     % [umol/m2/s]       mesophyll mitochondrial respiration
+        gam   =  Gamma./O;                               % []                half the reciprocal of Rubisco specificity for CO2
+        
+        Vpc   = Vpmax .* Cm./(Cm+Kp);                     % [umol/m2/s]       PEP carboxylation rate under limiting CO2 (saturating PEP)
+        Vp    = min(Vpc,Vpr);                            % [umol/m2/s]       PEP carboxylation rate
+        
+        % Complete model proposed by von Caemmerer (2000)
+        dum1  =  alpha/0.047;                           % dummy variables, to reduce computation time
+        dum2  =  Kc./Ko;
+        dum3  =  Vp-Rm+gbs.*Cm;
+        dum4  =  Vcmax-Rd;
+        dum5  =  gbs.*Kc.*(1+O./Ko);
+        dum6  =  gam.*Vcmax;
+        dum7  =  x*J./2. - Rm + gbs.*Cm;
+        dum8  =  (1.-x).*J./3.;
+        dum9  =  dum8 - Rd;
+        dum10 =  dum8 + Rd * 7/3;
+        
+        a     =  1. - dum1 .* dum2;
+        b     =  -(dum3+dum4+dum5+dum1.*(dum6+Rd.*dum2));
+        c     =  dum4.*dum3-dum6.*gbs*O+Rd.*dum5;
+        Ac    =  (-b - sqrt(b.^2-4.*a.*c))./(2.*a);           % [umol/m2/s]       CO2-limited net photosynthesis
+        
+        a     =  1.- 7./3.*gam.*dum1;
+        b     =  -(dum7+dum9 + gbs.*gam.*O.*7./3. + dum1.*gam.*dum10);
+        c     =  dum7.*dum9 - gbs.*gam.*O.*dum10;
+        Aj    =  (-b - sqrt(b.^2-4.*a.*c))./(2.*a);           % [umol/m2/s]       light-limited net photosynthesis (assuming that an obligatory Q cycle operates)
+        
+        A     =  min(Ac,Aj);                             % [umol/m2/s]       net photosynthesis
+        
+        Ja    =  J;                                      % [umole-/m2/s]     actual electron transport rate, CO2-limited
+               
+        if any(A==Ac) %IPL 03/09/2013
+            
+            ind=A==Ac;
+            a(ind)   =  x.*(1-x)./6./A(ind);
+            b(ind)   =  (1-x)/3.*(gbs(ind)./A(ind).*(Cm(ind)-Rm(ind)./gbs(ind)-gam(ind).*O)-1-alpha.*gam(ind)./0.047)-x./2.*(1.+Rd(ind)./A(ind));
+            c(ind)   =  (1+Rd(ind)./A(ind)).*(Rm(ind)-gbs(ind).*Cm(ind)-7.*gbs(ind).*gam(ind).*O./3)+(Rd(ind)+A(ind)).*(1-7.*alpha.*gam(ind)./3./0.047);
+            Ja(ind)  =  (-b(ind) + sqrt(b(ind).^2-4.*a(ind).*c(ind)))./(2.*a(ind));            % [umole-/m2/s]     actual electron transport rate, CO2-limited
+        end
+end
+
+fcount = fcount + 1; % # of times we called computeA
+
+if nargout > 1
+    biochem_out.A = A;
+    biochem_out.Ag = Ag;
+    biochem_out.Ja = Ja;
+    biochem_out.fcount = fcount;
+end
+
+end
 
 
 % Sources:
