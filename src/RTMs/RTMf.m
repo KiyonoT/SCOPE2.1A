@@ -252,6 +252,6 @@ if iwl685 == 55; [rad.F685,rad.wl685] = deal(NaN); end
 [rad.F740,iwl740]  = max(rad.LoF_(70:end));
 rad.wl740 = spectral.wlF(iwl740+69);
 rad.F684  = rad.LoF_(685-spectral.wlF(1));
-rad.F761  = rad.LoF_(762-spectral.wlF(1));
+rad.F758  = rad.LoF_(759-spectral.wlF(1)); % to compare NIES ver GOSAT SIF (Oshio et al. 2019)
 return
 

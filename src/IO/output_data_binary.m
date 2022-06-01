@@ -23,12 +23,13 @@ apar_out= [k xyt.year(k) xyt.t(k)  rad.PAR rad.EPAR canopy.LAIsunlit  canopy.LAI
 n_col.apar = length(apar_out);
 fwrite(f.apar_file,apar_out,'double');
 
-veg_out = [k xyt.year(k) xyt.t(k) canopy.A canopy.Ja canopy.ENPQ  canopy.PNPQ canopy.fqe canopy.LST canopy.emis];
+veg_out = [k xyt.year(k) xyt.t(k) canopy.Ag canopy.CiCa canopy.WUE ...
+    canopy.Ja canopy.ENPQ canopy.PNPQ canopy.fqe canopy.LST canopy.emis];
 n_col.veg = length(veg_out);
 fwrite(f.veg_file,veg_out,'double');
 
 %% Fluxes product
-flu_out = [k iter.counter xyt.year(k) xyt.t(k) cell2mat(struct2cell(fluxes))'];
+flu_out = [k iter.counter iter.meanEBercu xyt.year(k) xyt.t(k) cell2mat(struct2cell(fluxes))'];
 n_col.flu = length(flu_out);
 fwrite(f.flu_file,flu_out,'double');
 
@@ -40,8 +41,8 @@ fwrite(f.rad_file,rad_out,'double');
 
 %% Fluorescence scalar outputs
 if options.calc_fluor
-    fluor_out = [rad.F685  rad.wl685 rad.F740 rad.wl740 rad.F684 rad.F761 ...
-        rad.LoutF rad.EoutF rad.EoutFrc];
+    fluor_out = [rad.F685*canopy.FVC  rad.wl685 rad.F740*canopy.FVC rad.wl740 ...
+        rad.F684*canopy.FVC rad.F758*canopy.FVC rad.LoutF rad.EoutF rad.EoutFrc];
     n_col.fluor = length(fluor_out);
     fwrite(f.fluor_file,fluor_out,'double');
     
@@ -100,7 +101,9 @@ if isfield(f, 'r_file')
 end
 
 %% Resistances
-resist_out = [resistance.raa, resistance.raws, resistance.rss, resistance.ustar];  
+resist_out = [resistance.raa, resistance.raws, resistance.rss, ...
+    resistance.ustar, resistance.RiB, resistance.Ta, ...
+    resistance.Ga, resistance.Gcw, resistance.Omega];
 n_col.resist = length(resist_out);
 fwrite(f.resist_file, resist_out, 'double');
 

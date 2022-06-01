@@ -63,6 +63,7 @@ canopy.CR               = V(40).Val(vi(40));
 canopy.CD1              = V(41).Val(vi(41));
 canopy.Psicor           = V(42).Val(vi(42));
 canopy.rwc              = V(45).Val(vi(45));
+canopy.FVC              = V(76).Val(vi(76));
 
 %canopy.Cv = V(65).Val(vi(65));
 %canopy.crowndiameter = V(66).Val(vi(66));

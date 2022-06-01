@@ -88,6 +88,8 @@ V(73).Name                  = 'Tsold4';
 V(74).Name                  = 'Tsold5';
 V(75).Name                  = 'Tsold6';
 
+V(76).Name                  = 'FVC';
+
 V(77).Name                  = 'porosity';
 V(78).Name                  = 'psi_sat';
 V(79).Name                  = 'b';

@@ -337,6 +337,7 @@ biochem_out.Ci      = Ci;
 if ~isempty(Cc)
     biochem_out.Cc = Cc;
 end
+biochem_out.CiCa    = Ci.*ppm2bar ./ Cs;
 biochem_out.rcw     = rcw;
 biochem_out.gs      =  gs;
 biochem_out.RH      =  RH;

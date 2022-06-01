@@ -82,11 +82,12 @@ f_names = {'Simulation_Name','soil_file','optipar_file','atmos_file', 'Dataset_d
     'meteo_ec_csv', 'vegetation_retrieved_csv', 'LIDF_file', 'verification_dir', ...
     'mSCOPE_csv', 'nly'};  % must be in this order
 cols = {'t', 'year', 'Rin','Rli', 'p','Ta','ea','u','RH', 'VPD', 'tts','tto', 'psi' ...  % expected from EC file as well as ('Ca','SMC')
+    'fDif','Tsold1','Tsold2','Tsold3','Tsold4','Tsold5','Tsold6',...
     'Cab','Cca','Cdm','Cw','Cs','Cant','N'...  % leaf
     'SMC','BSMBrightness', 'BSMlat', 'BSMlon',...  % soil
-    'LAI', 'hc', 'LIDFa', 'LIDFb',...  % canopy
+    'LAI', 'hc', 'LIDFa', 'LIDFb', 'zo', 'd','FVC',...  % canopy
     'z','Ca', ...  % meteo
-    'Vcmax25', 'BallBerrySlope',...  % biochemistry;
+    'Vcmax25', 'BallBerrySlope', 'kV', 'Tyear',...  % biochemistry;
     'atmos_names' 
     };
 
@@ -413,18 +414,29 @@ for k = 1:telmax
         canopy.Rntot_PAR = canopy.Rnsun_PAR+canopy.Rnsha_PAR; % net PAR leaves (radiance)
         
         % LST [K] (directional, but assuming black-body surface!)
-        canopy.LST      = (pi*(rad.Lot+rad.Lote)./(constants.sigmaSB*rad.canopyemis)).^0.25;
+        canopy.LST      = (pi*(rad.Lot+rad.Lote)./(constants.sigmaSB*rad.canopyemis)*canopy.FVC + ...
+                           (thermal.Tsu+273.15)^4./(1-soil.rs_thermal)*(1-canopy.FVC)).^0.25;
         canopy.emis     = rad.canopyemis;
         
         % photosynthesis [mumol m-2 s-1]
-        canopy.A        = canopy.LAI*(meanleaf(canopy,bch.A,'layers',Ph)+meanleaf(canopy,bcu.A,integr,Ps)); % photosynthesis
+        canopy.Ag       = canopy.FVC*canopy.LAI*(meanleaf(canopy,bch.Ag,'layers',Ph)+meanleaf(canopy,bcu.Ag,integr,Ps)); % GPP
         
         % electron transport rate [mumol m-2 s-1]
-        canopy.Ja       = canopy.LAI*(meanleaf(canopy,bch.Ja,'layers',Ph)+meanleaf(canopy,bcu.Ja,integr,Ps)); % electron transport
+        canopy.Ja       = canopy.FVC*canopy.LAI*(meanleaf(canopy,bch.Ja,'layers',Ph)+meanleaf(canopy,bcu.Ja,integr,Ps)); % electron transport
+        
+        % diagnostic variables
+        canopy.CiCa     = meanleaf(canopy,bch.CiCa,'layers',Ph) + meanleaf(canopy,bcu.CiCa,integr,Ps);
+        canopy.WUE      = canopy.Ag / (fluxes.lEctot/(2.501-0.002361*fluxes.Tcave)/18 + fluxes.lEstot/(2.501-0.002361*fluxes.Tsave)/18); % [g(C) kg-1(H2O)]
+        if options.Fluorescence_model
+            % fraction of leaves under the NPQ phase
+            canopy.phase = meanleaf(canopy,bch.phase,'layers',Ph) + meanleaf(canopy,bcu.phase,integr,Ps);
+        else
+            canopy.phase = NaN;
+        end
         
         % non-photochemical quenching (energy) [W m-2]
-        canopy.ENPQ     = canopy.LAI*(meanleaf(canopy,rad.Rnh_Cab.*bch.Phi_N,'layers',Ph)+meanleaf(canopy,rad.Rnu_Cab.*bcu.Phi_N,integr,Ps)); % NPQ energy;
-        canopy.PNPQ     = canopy.LAI*(meanleaf(canopy,rad.Pnh_Cab.*bch.Phi_N,'layers',Ph)+meanleaf(canopy,rad.Pnu_Cab.*bcu.Phi_N,integr,Ps)); % NPQ energy;
+        canopy.ENPQ     = canopy.FVC*canopy.LAI*(meanleaf(canopy,rad.Rnh_Cab.*bch.Phi_N,'layers',Ph)+meanleaf(canopy,rad.Rnu_Cab.*bcu.Phi_N,integr,Ps)); % NPQ energy;
+        canopy.PNPQ     = canopy.FVC*canopy.LAI*(meanleaf(canopy,rad.Pnh_Cab.*bch.Phi_N,'layers',Ph)+meanleaf(canopy,rad.Pnu_Cab.*bcu.Phi_N,integr,Ps)); % NPQ energy;
         
         % computation of re-absorption corrected fluorescence
         % Yang and Van der Tol (2019); Van der Tol et al. (2019)

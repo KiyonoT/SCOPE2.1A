@@ -115,6 +115,7 @@ xl          = canopy.xl;
 LAI         = canopy.LAI;
 z0m         = canopy.zo;
 d           = canopy.d;
+FVC         = canopy.FVC;
 rss         = soil.rss;
 
 % functions for saturated vapour pressure 
@@ -148,10 +149,10 @@ SoilHeatMethod = options.soil_heat_method;
 if ~(options.simulation==1), SoilHeatMethod = 2; end
 meteo.Va = meteo.u;
 if SoilHeatMethod == 2
-Ts          = (Ta+3)*ones(2,1);         % soil temperature (+3 for a head start of the iteration) 
-Tch         = (Ta+.1)*ones(nl,1);       % leaf temperature (shaded leaves)
-Tcu         = (Ta+.3)*ones(size(Rnuc)); % leaf tempeFrature (sunlit leaves)
-meteo.L     = -1E6;                     % Monin-Obukhov length
+    Ts          = (Ta+3)*ones(2,1);         % soil temperature (+3 for a head start of the iteration) 
+    Tch         = (Ta+.1)*ones(nl,1);       % leaf temperature (shaded leaves)
+    Tcu         = (Ta+.3)*ones(size(Rnuc)); % leaf tempeFrature (sunlit leaves)
+    meteo.L     = -1E6;                     % Monin-Obukhov length
     soil.Tave   = Ta+3;
     canopy.Tave = Ta+.2;
 else
@@ -240,17 +241,17 @@ while CONT                          % while energy balance does not close
     [resist_out]  = resistances(constants,soil,canopy,meteo,options);
     meteo.ustar = resist_out.ustar;
     if options.MoninObukhov < 2 % SCOPE's built-in function; different from Tol 2009 [Fig B1] ?
-    raa     = resist_out.raa;
-    rawc    = resist_out.rawc;
-    raws    = resist_out.raws;  
-    rac     = (LAI+1)*(raa+rawc);
-    ras     = (LAI+1)*(raa+raws);
-    
-    % Fluxes (latent heat flux (lE), sensible heat flux (H) and soil heat flux G
-    % in analogy to Ohm's law, for canopy (c) and soil (s). All in units of [W m-2]
-    [lEch,Hch,ech,Cch,lambdah,sh]     = heatfluxes(rac,bch.rcw,Tch,ea,Ta,e_to_q,Ca,bch.Ci,constants, es_fun, s_fun);
-    [lEcu,Hcu,ecu,Ccu,lambdau,su]     = heatfluxes(rac,bcu.rcw,Tcu,ea,Ta,e_to_q,Ca,bcu.Ci,constants, es_fun, s_fun);
-    [lEs,Hs,~,~,lambdas,ss]           = heatfluxes(ras,rss ,Ts ,ea,Ta,e_to_q,Ca,Ca,constants, es_fun, s_fun);
+        raa     = resist_out.raa;
+        rawc    = resist_out.rawc;
+        raws    = resist_out.raws;  
+        rac     = (LAI+1)*(raa+rawc);
+        ras     = (LAI+1)*(raa+raws);
+
+        % Fluxes (latent heat flux (lE), sensible heat flux (H) and soil heat flux G
+        % in analogy to Ohm's law, for canopy (c) and soil (s). All in units of [W m-2]
+        [lEch,Hch,ech,Cch,lambdah,sh]     = heatfluxes(rac,bch.rcw,Tch,ea,Ta,e_to_q,Ca,bch.Ci,constants, es_fun, s_fun);
+        [lEcu,Hcu,ecu,Ccu,lambdau,su]     = heatfluxes(rac,bcu.rcw,Tcu,ea,Ta,e_to_q,Ca,bcu.Ci,constants, es_fun, s_fun);
+        [lEs,Hs,~,~,lambdas,ss]           = heatfluxes(ras,rss ,Ts ,ea,Ta,e_to_q,Ca,Ca,constants, es_fun, s_fun);
     else % CLM5 (commonly used dual-source model)
         raa  = resist_out.raa;
         rawc = resist_out.rawc; % bulk leaf boundary layer resistance
@@ -284,7 +285,7 @@ while CONT                          % while energy balance does not close
     %Hctot   = LAI*(meanleaf(canopy,Hcu,integr,Ps(1:end-1)) + meanleaf(canopy,Hch,'layers',1-Ps(1:end-1))  ); 
     Hctot   = aggregator(LAI,Hcu, Hch, Ps(1:end-1), canopy,integr);
     
-    Htot    = Hstot + Hctot;
+    Htot    = FVC*(Hstot + Hctot) + (1-FVC)*Hs(2);
     if options.MoninObukhov
         L = Monin_Obukhov(constants,meteo,Htot,options);
         if options.MoninObukhov == 2
@@ -366,6 +367,7 @@ end
 
 %% 4. some more outputs
 iter.counter    = counter;
+iter.meanEBercu = mean(EBercu(:));
 
 thermal.Tcu     = Tcu;
 thermal.Tch     = Tch;
@@ -380,14 +382,25 @@ fluxes.Tcave  = aggregator(1,Tcu, Tch, Fc,  canopy,integr);         % mean leaf 
 fluxes.Rnstot = Fs*Rns;           % Net radiation soil
 fluxes.lEstot = Fs*lEs;           % Latent heat soil
 fluxes.Hstot  = Fs*Hs;            % Sensible heat soil
-fluxes.Gtot   = Fs*G;             % Soil heat flux
+fluxes.Gstot  = Fs*G;             % Soil heat flux
 fluxes.Tsave  = Fs*Ts;            % Soil temperature
+fluxes.Rnus = Rnus;
+fluxes.lEus = lEs(2);
+fluxes.Hus  = Hs(2);
+fluxes.Gu   = G(2);
 % fluxes.Resp   = Fs*equations.soil_respiration(Ts); %  Soil respiration = 0
-fluxes.Rntot = fluxes.Rnctot + fluxes.Rnstot;
-fluxes.lEtot = fluxes.lEctot + fluxes.lEstot;
-fluxes.Htot = fluxes.Hctot + fluxes.Hstot;
+fluxes.Rntot = FVC*(fluxes.Rnctot + fluxes.Rnstot) + (1-FVC)*Rnus;
+fluxes.lEtot = FVC*(fluxes.lEctot + fluxes.lEstot) + (1-FVC)*lEs(2);
+fluxes.Htot  = FVC*(fluxes.Hctot  + fluxes.Hstot)  + (1-FVC)*Hs(2);
+fluxes.Gtot  = FVC*Fs*G + (1-FVC)*G(2);
 
 resist_out.rss = rss; % this is simply a copy of the input rss
+resist_out.Ta = Ta;
+resist_out.Ga  = 1/(raa+rawc);
+resist_out.Gcw = aggregator(LAI, 1./bcu.rcw, 1./bch.rcw, Fc, canopy, integr);
+s = aggregator(1, s_fun(es_fun(Tcu),Tcu), s_fun(es_fun(Tch),Tch), Fc, canopy, integr)/p; % [degC-1]
+gamma = cp/(2.501-0.002361*fluxes.Tcave)*1E-6; % [degC-1]
+resist_out.Omega = (1 + s/gamma) / (1 + s/gamma + resist_out.Ga/resist_out.Gcw);
 
 %% update soil temperatures history
 if SoilHeatMethod < 2

@@ -270,9 +270,11 @@ Ja = biochem_out.Ja;
 %---------------------------------------------------------------------------------------------------------
 %% Calculation of PSII quantum yield and fluorescence
 ps     = Ja ./(beta.*Q);                            % [mol e-/E]    PSII photochemical quantum yield
-[fs]   = MD12(ps,Ja,Jms,kps,kf,kds,kDs);            % [E/E]         PSII fluorescence yield
+[fs,phase]   = MD12(ps,Ja,Jms,kps,kf,kds,kDs);      % [E/E]         PSII fluorescence yield
 eta    = fs./fo0;                                   % []            scaled PSII fluorescence yield
-
+qLr = ps./fs * kf/kPSII / qLs; % fraction of open reaction centres
+kp  = kps * qLr;
+Phi_N  = 1 - ps - fs - fs*kD/kf;
 
 %rcw         = 0.625*(Cs-Ci)./A *rhoa/Mair*1E3    * 1e6 ./ p .* 1E5;
 gs = 1.6 * A* ppm2bar./ (Cs-Ci);
@@ -280,19 +282,19 @@ rcw      =  (rhoa./(Mair*1E-3))./gs;
 rcw(A<=0 & rcw~=0)   = 0.625*1E6;
 
 %% convert back to ppm
+biochem_out.CiCa = Ci./Cs;
 Ci          = Ci*1e6 ./ p .* 1E5;
 
 %%
-biochem_out.A = A;
 biochem_out.Ci = Ci;
 biochem_out.ps = ps;
 biochem_out.eta = eta;
 biochem_out.fs  = fs;
 biochem_out.rcw = rcw;
 biochem_out.qE  = rcw*NaN; % dummy output, to be consistent with SCOPE
-biochem_out.Kn  = NPQs + 0*rcw; %
-biochem_out.Phi_N  = kNPQs./(kNPQs +kD+kf+kps)+ 0*rcw;
-biochem_out.Ja      = Ja;
+biochem_out.Kn  = Phi_N.*(kp+kf+kD)./(1-Phi_N); %
+biochem_out.Phi_N = Phi_N;
+biochem_out.phase = phase;
 
 return;
 
@@ -303,7 +305,7 @@ end
 %---------------------------------------------------------------------------------------------------------
 %% MD12 algorithm for the computation of fluorescence yield
 
-function [fs] = MD12(ps,Ja,Jms,kps,kf,kds,kDs)
+function [fs, phase] = MD12(ps,Ja,Jms,kps,kf,kds,kDs)
 
 fs1    = ps .* (kf./kps) ./ (1. - Ja./Jms);         % [E/E]   PSII fluorescence yield under CO2-limited conditions
 
@@ -312,6 +314,7 @@ par2   = par1.* (kf+kDs+kds)./kf;                  % [E/E]   empirical parameter
 fs2    = (par1-ps)./par2;                           % [E/E]   PSII fluorescence yield under light-limited conditions
 
 fs     = min(fs1,fs2);                              % [E/E]   PSII fluorescence yield
+phase  = fs1 < fs2;
 end
 
 
