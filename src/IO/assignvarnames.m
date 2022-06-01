@@ -80,6 +80,10 @@ V(68).Name                  = 'lambdas';
 %V(69).Name                  = 'Cv'; 
 %V(70).Name                  = 'crowndiameter'; 
 
+V(77).Name                  = 'porosity';
+V(78).Name                  = 'psi_sat';
+V(79).Name                  = 'b';
+
 V(80).Name                  = 'theta_c';
 V(81).Name                  = 'theta_w';
 

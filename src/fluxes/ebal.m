@@ -207,7 +207,14 @@ while CONT                          % while energy balance does not close
     bch     = b(leafbio,meteo_h,options,constants,fV);
     bcu     = b(leafbio,meteo_u,options,constants,fVu);
      
+    % matric-potential effect on the vapor pressure within the surface soil
+    if options.calc_rss_rbs == 2
+        psi_soil = -soil.psi_sat * (soil.SMC/soil.porosity)^(-soil.b); % [J kg-1] or [mm]
+        alpha_soil = exp(psi_soil*g*1E-3/(R/MH2O)./(Ts+273.15));
+    else
         alpha_soil = 1;
+    end
+    
     % Aerodynamic roughness
     % calculate friction velocity [m s-1] and aerodynamic resistances [s m-1]  
     [resist_out]  = resistances(constants,soil,canopy,meteo,options);

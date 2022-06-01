@@ -12,6 +12,9 @@ soil.SMC                = V(54).Val(vi(54));
 soil.BSMBrightness      = V(61).Val(vi(61));
 soil.BSMlat             = V(62).Val(vi(62));
 soil.BSMlon             = V(63).Val(vi(63));
+soil.porosity           = V(77).Val(vi(77));
+soil.psi_sat            = V(78).Val(vi(78));
+soil.b                  = V(79).Val(vi(79));
 
 leafbio.Cab             = V(1).Val(vi(1));
 leafbio.Cca             = V(2).Val(vi(2));
@@ -96,7 +99,7 @@ else
 end
 
 if options.calc_rss_rbs
-    [soil.rss,soil.rbs] = calc_rssrbs(soil.SMC,canopy.LAI,soil.rbs);
+    [soil.rss,soil.rbs] = calc_rssrbs(soil,canopy.LAI,meteo.Ta,options);
 end
 
 if leafbio.Type
