@@ -102,6 +102,7 @@ Mair        = constants.Mair;
 rhoa        = constants.rhoa;
 cp          = constants.cp;
 sigmaSB     = constants.sigmaSB;
+R           = constants.R;
 
 % input preparation
 nl          = canopy.nlayers;   
@@ -138,6 +139,9 @@ ech         = ea*ones(nl,1);          % Leaf boundary vapour pressure (shaded/su
 Cch         = Ca*ones(nl,1);
 ecu         = ea+0*Rnuc;
 Ccu         = Ca+0*Rnuc;          % Leaf boundary CO2 (shaded/sunlit leaves)
+if options.calc_rhoa
+    rhoa = 100*(p-0.378*ea)/(R/Mair*1000)/(Ta+273.15);
+end
 
 % other preparations
 e_to_q      = MH2O/Mair./p;             % Conversion of vapour pressure [Pa] to absolute humidity [kg kg-1]
@@ -217,7 +221,7 @@ while CONT                          % while energy balance does not close
     
     Htot    = Hstot + Hctot;
     if options.MoninObukhov
-        meteo.L     = Monin_Obukhov(constants,meteo,Htot);     
+        meteo.L = Monin_Obukhov(constants,meteo,Htot,options);
     end
     
     % ground heat flux

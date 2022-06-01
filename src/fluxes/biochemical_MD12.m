@@ -73,6 +73,11 @@ Q(Q==0) = 1E-9;
 
 %% Global and site-specific constants
 R             =  constants.R;                         % [J/K/mol]     universal gas constant
+rhoa    = constants.rhoa;                             % [kg m-3]      specific mass of air
+Mair    = constants.Mair;                             % [g mol-1]     molecular mass of dry air
+if options.calc_rhoa
+    rhoa = 100*(meteo.p-0.378*eb)./(R/Mair*1000)./(meteo.T+273.15);
+end
 
 %---------------------------------------------------------------------------------------------------------
 %% Unit conversion and computation of environmental variables
@@ -289,9 +294,6 @@ ps     = Ja ./(beta.*Q);                            % [mol e-/E]    PSII photoch
 [fs]   = MD12(ps,Ja,Jms,kps,kf,kds,kDs);            % [E/E]         PSII fluorescence yield
 eta    = fs./fo0;                                   % []            scaled PSII fluorescence yield
 
-%% JP add
-rhoa        = 1.2047;                               % [kg m-3]       specific mass of air
-Mair        = 28.96;                                % [g mol-1]      molecular mass of dry air
 
 %rcw         = 0.625*(Cs-Ci)./A *rhoa/Mair*1E3    * 1e6 ./ p .* 1E5;
 ppm2bar =  1e-6 .* (p .*1E-5);

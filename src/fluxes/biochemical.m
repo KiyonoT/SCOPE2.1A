@@ -113,6 +113,9 @@ T               = meteo.T + 273.15*(meteo.T<200); % convert temperatures to K if
 eb              = meteo.eb;
 O               = meteo.Oa;
 p               = meteo.p;
+if options.calc_rhoa
+    rhoa = 100*(p-0.378*eb)./(R/Mair*1000)./T;
+end
 
 %biochemical
 Type            = leafbio.Type;
