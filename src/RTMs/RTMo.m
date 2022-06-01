@@ -633,9 +633,19 @@ if ~isfield(atmo,'Esun_')
         J_o             = wl<3000;                          %find optical spectrum
         Esunto          = 0.001 * Sint(Esun_(J_o),wl(J_o)); %Calculate optical sun fluxes (by Integration), including conversion mW >> W
         Eskyto          = 0.001 * Sint(Esky_(J_o),wl(J_o)); %Calculate optical sun fluxes (by Integration)
-        Etoto           = Esunto + Eskyto;                  %Calculate total fluxes
-        fEsuno(J_o)     = Esun_(J_o)/Etoto;                 %fraction of contribution of Sun fluxes to total light
-        fEskyo(J_o)     = Esky_(J_o)/Etoto;                 %fraction of contribution of Sky fluxes to total light
+        
+        if meteo.fDif==-999
+            Etoto           = Esunto + Eskyto;              %Calculate total fluxes
+            fEsuno(J_o)     = Esun_(J_o)/Etoto;             %fraction of contribution of Sun fluxes to total light
+            fEskyo(J_o)     = Esky_(J_o)/Etoto;             %fraction of contribution of Sky fluxes to total light
+            Esun_(J_o) = fEsuno(J_o)*meteo.Rin;
+            Esky_(J_o) = fEskyo(J_o)*meteo.Rin;
+        else
+            fEsuno(J_o)     = Esun_(J_o)/Esunto;
+            fEskyo(J_o)     = Esky_(J_o)/Eskyto;
+            Esun_(J_o) = fEsuno(J_o)*meteo.Rin*(1-meteo.fDif);
+            Esky_(J_o) = fEskyo(J_o)*meteo.Rin*meteo.fDif;
+        end
         
         J_t             = wl>=3000;                         %find thermal spectrum
         Esuntt          = 0.001 * Sint(Esun_(J_t),wl(J_t)); %Themal solar fluxes
@@ -644,8 +654,6 @@ if ~isfield(atmo,'Esun_')
         fEsunt(J_t)     = Esun_(J_t)/Etott;                 %fraction from Esun
         fEskyt(J_t)     = Esky_(J_t)/Etott;                 %fraction from Esky
         
-        Esun_(J_o) = fEsuno(J_o)*meteo.Rin;
-        Esky_(J_o) = fEskyo(J_o)*meteo.Rin;
         Esun_(J_t) = fEsunt(J_t)*meteo.Rli;
         Esky_(J_t) = fEskyt(J_t)*meteo.Rli;
     end

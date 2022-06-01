@@ -121,18 +121,6 @@ rss         = soil.rss;
 es_fun      = @(T)6.107*10.^(7.5.*T./(237.3+T));
 s_fun       = @(es, T) es*2.3026*7.5*237.3./(237.3+T).^2;
 
-SoilHeatMethod = options.soil_heat_method;
-if ~(options.simulation==1), SoilHeatMethod = 2; end
-if SoilHeatMethod < 2
-    if k > 1
-        Deltat          = (datenum(xyt.t(k))-datenum(xyt.t(k-1)))*86400;           %           Duration of the time interval (s)
-    else
-        Deltat          = 1/48*86400;
-    end   
-    x 		= [1:12;1:12]'*Deltat;
-    Tsold   = soil.Tsold;
-end
-
 % meteo
 Ta          = meteo.Ta;
 ea          = meteo.ea;
@@ -156,13 +144,45 @@ Fs          = [1-Ps(end),Ps(end)];      % Matrix containing values for 1-Ps and 
 fV          = exp(kV*xl(1:end-1));      % Vertical profile of Vcmax
 
 % initial values for the loop
+SoilHeatMethod = options.soil_heat_method;
+if ~(options.simulation==1), SoilHeatMethod = 2; end
 meteo.Va = meteo.u;
+if SoilHeatMethod == 2
 Ts          = (Ta+3)*ones(2,1);         % soil temperature (+3 for a head start of the iteration) 
 Tch         = (Ta+.1)*ones(nl,1);       % leaf temperature (shaded leaves)
 Tcu         = (Ta+.3)*ones(size(Rnuc)); % leaf tempeFrature (sunlit leaves)
 meteo.L     = -1E6;                     % Monin-Obukhov length
     soil.Tave   = Ta+3;
     canopy.Tave = Ta+.2;
+else
+    Tsold = soil.Tsold;
+    if isfield(meteo,"Tsold1")
+        Deltat  = 60*60;                    % Duration of the time interval (s)
+    else
+        if k > 1
+            Deltat = (datenum(xyt.t(k))-datenum(xyt.t(k-1)))*86400;
+        else
+            Deltat = 1/48*86400;
+        end
+    end
+    x = [1:12;1:12]'*Deltat;
+    
+    % initial values for stability correction
+    Ts = Tsold(1,:)';
+    soil.Tave = Fs * Ts;
+    canopy.Tave = Ta;
+    meteo.L = Inf;
+    if options.calc_rhoa
+        % initial value of M-O zeta is estimated from the Bulk Richardson number
+        if soil.Tave>Ta, meteo.Va = sqrt(meteo.u^2 + 0.5^2); end
+        RiB0 = (Ta-(Ta+soil.Tave)/2)/(Ta+273.15) * g*(z-d)/meteo.Va^2;
+        meteo.L = (z-d)/RiB2zeta(RiB0, z, d, z0m);
+    end
+
+    % initial values for biochem
+    Tch = Ta*ones(nl,1);
+    Tcu = Ta*ones(size(Rnuc));
+end
 [meteo_h,meteo_u]  = deal(meteo);
 
 % this for is the exponential decline of Vcmax25. If 'lite' the dimensions

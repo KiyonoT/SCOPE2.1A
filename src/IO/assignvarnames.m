@@ -80,6 +80,14 @@ V(68).Name                  = 'lambdas';
 %V(69).Name                  = 'Cv'; 
 %V(70).Name                  = 'crowndiameter'; 
 
+V(69).Name                  = 'fDif';
+V(70).Name                  = 'Tsold1';
+V(71).Name                  = 'Tsold2';
+V(72).Name                  = 'Tsold3';
+V(73).Name                  = 'Tsold4';
+V(74).Name                  = 'Tsold5';
+V(75).Name                  = 'Tsold6';
+
 V(77).Name                  = 'porosity';
 V(78).Name                  = 'psi_sat';
 V(79).Name                  = 'b';

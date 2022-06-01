@@ -339,6 +339,21 @@ for k = 1:telmax
             soil.refl       = BSM(soil,optipar,soilemp);
         end
         soil.refl(spectral.IwlT) = soil.rs_thermal;
+        if sum(contains(input_ts,'Tsold')) == 6
+            if k > 3 && abs(datenum(xyt.t(k))-datenum(xyt.t(k-1)))-abs(datenum(xyt.t(k-1))-datenum(xyt.t(k-2))) > 1/48
+                % if the time stamp is discontinuous (> 0.5 hour), reset the soil temperature memory
+                soil.Tsold = meteo.Ta*ones(12,2);
+            end
+            if ~isnan(meteo.Tsold1)
+                % set precomputed soil temperature (6 hours) for sunlit soil
+                soil.Tsold(1,2) = meteo.Tsold1;
+                soil.Tsold(2,2) = meteo.Tsold2;
+                soil.Tsold(3,2) = meteo.Tsold3;
+                soil.Tsold(4,2) = meteo.Tsold4;
+                soil.Tsold(5,2) = meteo.Tsold5;
+                soil.Tsold(6,2) = meteo.Tsold6;
+            end
+        end
         
         %% four stream canopy radiative transfer model for incident radiation
         [rad,gap,profiles]       = RTMo(spectral,atmo,soil,leafopt,canopy,angles,constants,meteo,options);

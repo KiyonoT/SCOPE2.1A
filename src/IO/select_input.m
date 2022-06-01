@@ -76,6 +76,13 @@ meteo.ea            = V(34).Val(vi(34));
 meteo.u             = V(35).Val(vi(35));
 meteo.Ca            = V(36).Val(vi(36));
 meteo.Oa            = V(37).Val(vi(37));
+meteo.fDif          = V(69).Val(vi(69));
+meteo.Tsold1        = V(70).Val(vi(70));
+meteo.Tsold2        = V(71).Val(vi(71));
+meteo.Tsold3        = V(72).Val(vi(72));
+meteo.Tsold4        = V(73).Val(vi(73));
+meteo.Tsold5        = V(74).Val(vi(74));
+meteo.Tsold6        = V(75).Val(vi(75));
 
 xyt.startDOY        = V(46).Val(vi(46));
 xyt.endDOY          = V(47).Val(vi(47));
