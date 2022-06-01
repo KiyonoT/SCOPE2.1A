@@ -71,6 +71,7 @@ options.calc_rhoa            = N(19);
 
 if options.simulation>2 || options.simulation<0, fprintf('\n simulation option should be between 0 and 2 \r'); return, end
 options.Cca_function_of_Cab = 0; % this will change to 1 if Cca is not provided in the input.
+options.calc_zo = 0; % use R94 parametrization if zo or d is lacking
 
 switch options.lite
     case 0, integr = 'angles_and_layers';
@@ -125,6 +126,11 @@ end
 fclose(fid);
 V                           = assignvarnames();
 
+% list the time-series variables provided in filenames.csv
+y = {F.FileID};
+x = find(~cellfun(@isempty, {F.FileName}));
+input_ts = y(x(x > length(f_names)));
+
 for i = 1:length(V)
     j = find(strcmp(varnames,V(i).Name));
     if isempty(j)
@@ -132,34 +138,24 @@ for i = 1:length(V)
             fprintf(1,'%s %s %s \n','warning: input "', V(i).Name, '" not provided in input data...');
             fprintf(1,'%s %s %s\n', 'I will use 0.25*Cab instead');
             options.Cca_function_of_Cab = 1;
+        elseif ismember(i, [38, 70:75, 80:81]) || ...
+                (options.simulation~=1 && ismember(i, 46:50)) || ...
+                (options.calc_rss_rbs~=2 && ismember(i, 77:79)) %|| ...
+                % (options.stomatal_model~=1 && i==84)
+            V(i).Val = -999; % set N/A without warning
         else
-            if ~(options.simulation==1) && (i==30 || i==32)
-                fprintf(1,'%s %s %s \n','warning: input "', V(i).Name, '" not provided in input data...');
+            fprintf(1,'%s %s %s \n','warning: input "', V(i).Name, '" not provided in input data');
+            if     options.simulation==1 && any(strcmp(input_ts, V(i).Name))
+                fprintf(1,'%s %s %s\n', 'I will look for the values in Dataset Directory "',F(5).FileName,'"');
+                V(i).Val = NaN;
+            elseif options.simulation~=1 && ismember(i, [30,32])
                 fprintf(1,'%s %s %s\n', 'I will use the MODTRAN spectrum as it is');
+            elseif i==69
+                fprintf(1,'%s \n', 'I will use the direct/diffuse ratio calculated from the MODTRAN spectrum');
+                V(i).Val = -999;
             else
-                if (options.simulation == 1 || (~options.simulation && (i<46 || i>50 )))
-                    fprintf(1,'%s %s %s \n','warning: input "', V(i).Name, '" not provided in input data');
-                    if (options.simulation ==1)% && (i==1 ||i==9||i==22||i==23||i==54 || (i>29 && i<37)))
-                        fprintf(1,'%s %s %s\n', 'I will look for the values in Dataset Directory "',F(5).FileName,'"');
-                    else
-                        if (i== 24 || i==25)
-                            fprintf(1,'%s %s %s\n', 'will estimate it from LAI, CR, CD1, Psicor, and CSSOIL');
-                            options.calc_zo = 1;
-                        else
-                            if (i>38 && i<44)
-                                fprintf(1,'%s %s %s\n', 'will use the provided zo and d');
-                                options.calc_zo = 0;
-                            else
-                                if ~((options.simulation ==1 && (i==30 ||i==32)))
-                                    fprintf(1,'%s \n', 'this input is required: SCOPE ends');
-                                    return
-                                elseif (options.simulation ==1 && (i==30 ||i==32))
-                                    fprintf(1,'%s %s %s\n', '... no problem, I will find it in Dataset Directory "',F(5).FileName, '"');
-                                end
-                            end
-                        end
-                    end
-                end
+                fprintf(1,'%s \n', 'this input is required: SCOPE ends');
+                return
             end
         end
     else
@@ -167,9 +163,25 @@ for i = 1:length(V)
         if ~isempty(k)
             V(i).Val = X(j).Val(k);
         else
+            % fprintf(1,'%s %s %s \n','warning: the value of "', V(i).Name, '"is empty');
             V(i).Val            = -999;
         end
     end
+end
+
+if any([V(24:25).Val] == -999) && sum(strcmp(input_ts,'d'))+sum(strcmp(input_ts,'zo'))~=2
+    fprintf(1,'%s\n', 'I will estimate zo and d from LAI, CR, CD1, Psicor, and CSSOIL');
+    options.calc_zo = 1;
+    if any([V(40:43).Val] == -999)
+        fprintf(1,'%s\n', 'this input is required: SCOPE ends');
+        return
+    end
+else
+    fprintf(1,'%s\n', 'I will use the provided zo and d');
+end
+if any([V(80:81).Val] == -999)
+    fprintf(1,'%s\n', 'I assume well-watered conditions');
+    V(80).Val = -999; V(81).Val = -999; %V(82).Val = -999; V(83).Val = -999;
 end
 
 %% 6. Load spectral data for leaf and soil
@@ -210,10 +222,11 @@ end
 
 %% 12. preparations
 %% soil heat
-if options.simulation==1
-    if options.soil_heat_method<2
-        if (isempty(meteo.Ta) || meteo.Ta<-273), meteo.Ta = 20; end
-        soil.Tsold = meteo.Ta*ones(12,2);
+if options.simulation==1 && options.soil_heat_method<2
+    if (isempty(meteo.Ta) || meteo.Ta<-273), meteo.Ta = 20; end
+    soil.Tsold = meteo.Ta*ones(12,2);
+    if sum(contains(input_ts,'Tsold')) == 6
+        fprintf(1,'%s %s \n', 'I use precomputed soil temperature time series in', F(6).FileName);
     end
 end
 %% temperature sensitivity of photosynthesis parameters

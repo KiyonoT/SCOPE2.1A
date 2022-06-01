@@ -116,6 +116,6 @@ else
     leafbio.Type = 'C3';
 end
 canopy.hot  = canopy.leafwidth/canopy.hc;
-[canopy.zo,canopy.d ]  = zo_and_d(soil,canopy,constants);
+if options.calc_zo, [canopy.zo,canopy.d] = zo_and_d(soil,canopy,constants); end
 leafbio.fqe = fqe;
 end
